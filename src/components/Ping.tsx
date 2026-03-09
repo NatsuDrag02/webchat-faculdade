@@ -5,9 +5,6 @@ export default function Ping() {
   const [status, setStatus] = useState<'verificando' | 'ok' | 'erro'>('verificando');
   const [message, setMessage] = useState<string>('');
 
-  const show = import.meta.env.VITE_SHOW_PING;
-  if (show === 'false') return null;
-
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -24,6 +21,9 @@ export default function Ping() {
       cancelled = true;
     };
   }, []);
+
+  const show = import.meta.env.VITE_SHOW_PING;
+  if (show === 'false') return null;
 
   return (
     <div className="fixed bottom-3 right-3 z-50">

@@ -17,9 +17,11 @@ export default function Chat({ user }: ChatProps) {
   const [loading, setLoading] = useState(false);
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [tick, setTick] = useState(0);
+  const [subscribed, setSubscribed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const cleanupIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const initialize = async () => {
@@ -27,6 +29,7 @@ export default function Chat({ user }: ChatProps) {
       await loadMessages();
       setupRealtimeSubscription();
       setupCleanupInterval();
+      setupPollingFallback();
     };
 
     initialize();
@@ -37,6 +40,9 @@ export default function Chat({ user }: ChatProps) {
       }
       if (cleanupIntervalRef.current) {
         clearInterval(cleanupIntervalRef.current);
+      }
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
       }
     };
   }, [user.id]);
@@ -91,16 +97,21 @@ export default function Chat({ user }: ChatProps) {
       }
 
       if (data) {
-        const normalized = (data as unknown as Array<Record<string, unknown>>).map((msg) => {
-          const p = (Array.isArray((msg as any).profiles)
-            ? (msg as any).profiles[0]
-            : (msg as any).profiles) as Profile | undefined;
+        type JoinedRow = {
+          id: string;
+          user_id: string;
+          content: string;
+          created_at: string;
+          profiles: Profile | Profile[];
+        };
+        const normalized = (data as JoinedRow[]).map((msg) => {
+          const p = Array.isArray(msg.profiles) ? msg.profiles[0] : msg.profiles;
           return {
-            id: String((msg as any).id),
-            user_id: String((msg as any).user_id),
-            content: String((msg as any).content),
-            created_at: String((msg as any).created_at),
-            profiles: p as Profile,
+            id: msg.id,
+            user_id: msg.user_id,
+            content: msg.content,
+            created_at: msg.created_at,
+            profiles: p,
           };
         }) as (Message & { profiles: Profile })[];
         setMessages(normalized);
@@ -192,8 +203,16 @@ export default function Chat({ user }: ChatProps) {
         }
       )
       .subscribe((status) => {
-        console.log('Subscription status:', status);
+        setSubscribed(status === 'SUBSCRIBED');
       });
+  };
+
+  const setupPollingFallback = () => {
+    pollIntervalRef.current = setInterval(async () => {
+      if (!subscribed) {
+        await loadMessages();
+      }
+    }, 500);
   };
 
   const sendMessage = async (e: React.FormEvent) => {
