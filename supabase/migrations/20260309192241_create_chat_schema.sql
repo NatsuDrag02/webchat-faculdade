@@ -64,5 +64,10 @@ CREATE POLICY "Authenticated users can insert messages"
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+CREATE POLICY "Authenticated users can delete messages older than 1 minute"
+  ON messages FOR DELETE
+  TO authenticated
+  USING (now() - created_at > interval '1 minute');
+
 CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages(created_at DESC);
 CREATE INDEX IF NOT EXISTS messages_user_id_idx ON messages(user_id);

@@ -28,7 +28,14 @@ export default function Auth() {
           password,
         });
 
-        if (signUpError) throw signUpError;
+        if (signUpError) {
+          const msg = signUpError.message?.toLowerCase?.() || '';
+          if (msg.includes('rate limit') || msg.includes('too many requests')) {
+            setError('Limite de envio de email excedido. Tente novamente mais tarde ou desative confirmações de email no projeto (desenvolvimento).');
+            return;
+          }
+          throw signUpError;
+        }
 
         if (authData.user) {
           const { error: profileError } = await supabase
@@ -43,7 +50,7 @@ export default function Auth() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'Ocorreu um erro');
     } finally {
       setLoading(false);
     }

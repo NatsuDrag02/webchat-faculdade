@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { Send, LogOut } from 'lucide-react';
 import type { Message, Profile } from '../lib/supabase';
 
 interface ChatProps {
   user: {
     id: string;
-    email: string;
+    email?: string;
   };
 }
 
@@ -15,8 +16,9 @@ export default function Chat({ user }: ChatProps) {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
+  const [tick, setTick] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const channelRef = useRef<any>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
   const cleanupIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export default function Chat({ user }: ChatProps) {
 
   const loadMessages = async () => {
     try {
+      const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from('messages')
         .select(`
@@ -79,6 +82,7 @@ export default function Chat({ user }: ChatProps) {
             created_at
           )
         `)
+        .gte('created_at', oneMinuteAgo)
         .order('created_at', { ascending: true });
 
       if (error) {
@@ -87,15 +91,19 @@ export default function Chat({ user }: ChatProps) {
       }
 
       if (data) {
-        setMessages(
-          data.map((msg: any) => ({
-            id: msg.id,
-            user_id: msg.user_id,
-            content: msg.content,
-            created_at: msg.created_at,
-            profiles: msg.profiles,
-          })) as (Message & { profiles: Profile })[]
-        );
+        const normalized = (data as unknown as Array<Record<string, unknown>>).map((msg) => {
+          const p = (Array.isArray((msg as any).profiles)
+            ? (msg as any).profiles[0]
+            : (msg as any).profiles) as Profile | undefined;
+          return {
+            id: String((msg as any).id),
+            user_id: String((msg as any).user_id),
+            content: String((msg as any).content),
+            created_at: String((msg as any).created_at),
+            profiles: p as Profile,
+          };
+        }) as (Message & { profiles: Profile })[];
+        setMessages(normalized);
       }
     } catch (err) {
       console.error('Error in loadMessages:', err);
@@ -119,6 +127,8 @@ export default function Chat({ user }: ChatProps) {
         }
       } catch (err) {
         console.error('Error in cleanup interval:', err);
+      } finally {
+        setTick((t) => t + 1);
       }
     }, 60000);
   };
@@ -137,22 +147,23 @@ export default function Chat({ user }: ChatProps) {
           schema: 'public',
           table: 'messages',
         },
-        async (payload: any) => {
+        async (payload: RealtimePostgresChangesPayload<Message>) => {
           try {
+            const newRow = payload.new as unknown as Message;
             const { data: profile } = await supabase
               .from('profiles')
               .select('*')
-              .eq('id', payload.new.user_id)
+              .eq('id', newRow.user_id)
               .maybeSingle();
 
             if (profile) {
               setMessages((current) => [
                 ...current,
                 {
-                  id: payload.new.id,
-                  user_id: payload.new.user_id,
-                  content: payload.new.content,
-                  created_at: payload.new.created_at,
+                  id: newRow.id,
+                  user_id: newRow.user_id,
+                  content: newRow.content,
+                  created_at: newRow.created_at,
                   profiles: profile,
                 } as Message & { profiles: Profile },
               ]);
@@ -169,10 +180,11 @@ export default function Chat({ user }: ChatProps) {
           schema: 'public',
           table: 'messages',
         },
-        (payload: any) => {
+        (payload: RealtimePostgresChangesPayload<Message>) => {
           try {
+            const oldRow = payload.old as unknown as Partial<Message>;
             setMessages((current) =>
-              current.filter((msg) => msg.id !== payload.old.id)
+              current.filter((msg) => msg.id !== oldRow.id)
             );
           } catch (err) {
             console.error('Error handling DELETE:', err);
@@ -199,6 +211,7 @@ export default function Chat({ user }: ChatProps) {
         console.error('Error sending message:', error);
       } else {
         setNewMessage('');
+        await loadMessages();
       }
     } catch (err) {
       console.error('Error in sendMessage:', err);
@@ -217,6 +230,8 @@ export default function Chat({ user }: ChatProps) {
       minute: '2-digit',
     });
   };
+
+  const cutoffIso = new Date(Date.now() - 60 * 1000 + tick).toISOString();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col">
@@ -237,12 +252,14 @@ export default function Chat({ user }: ChatProps) {
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 ? (
+        {messages.filter((m) => m.created_at >= cutoffIso).length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-400">
             <p>Nenhuma mensagem ainda. Comece a conversar!</p>
           </div>
         ) : (
-          messages.map((message) => {
+          messages
+            .filter((m) => m.created_at >= cutoffIso)
+            .map((message) => {
             const isOwn = message.user_id === user.id;
             return (
               <div

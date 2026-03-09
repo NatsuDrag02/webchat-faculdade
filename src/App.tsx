@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import Auth from './components/Auth';
 import Chat from './components/Chat';
 import type { User } from '@supabase/supabase-js';
+import Ping from './components/Ping';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -36,7 +37,12 @@ function App() {
     );
   }
 
-  return user ? <Chat user={user} /> : <Auth />;
+  return (
+    <>
+      {user ? <Chat user={user} /> : <Auth />}
+      <Ping />
+    </>
+  );
 }
 
 export default App;
