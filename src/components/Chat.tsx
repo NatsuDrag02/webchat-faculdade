@@ -1,17 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
-import { Send, LogOut } from 'lucide-react';
-import type { Message, Profile } from '../lib/supabase';
+import { Send, LogOut, ArrowLeft } from 'lucide-react';
+import type { Message, Profile, Room } from '../lib/supabase';
 
 interface ChatProps {
   user: {
     id: string;
     email?: string;
   };
+  room: Room;
+  onBack: () => void;
 }
 
-export default function Chat({ user }: ChatProps) {
+export default function Chat({ user, room, onBack }: ChatProps) {
   const [messages, setMessages] = useState<(Message & { profiles: Profile })[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,7 +47,7 @@ export default function Chat({ user }: ChatProps) {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [user.id]);
+  }, [user.id, room.id]);
 
   useEffect(() => {
     scrollToBottom();
@@ -79,6 +81,7 @@ export default function Chat({ user }: ChatProps) {
         .select(`
           id,
           user_id,
+          room_id,
           content,
           created_at,
           profiles:user_id (
@@ -88,6 +91,7 @@ export default function Chat({ user }: ChatProps) {
             created_at
           )
         `)
+        .eq('room_id', room.id)
         .gte('created_at', oneMinuteAgo)
         .order('created_at', { ascending: true });
 
@@ -100,6 +104,7 @@ export default function Chat({ user }: ChatProps) {
         type JoinedRow = {
           id: string;
           user_id: string;
+          room_id: string;
           content: string;
           created_at: string;
           profiles: Profile | Profile[];
@@ -109,6 +114,7 @@ export default function Chat({ user }: ChatProps) {
           return {
             id: msg.id,
             user_id: msg.user_id,
+            room_id: msg.room_id,
             content: msg.content,
             created_at: msg.created_at,
             profiles: p,
@@ -146,7 +152,7 @@ export default function Chat({ user }: ChatProps) {
 
   const setupRealtimeSubscription = () => {
     channelRef.current = supabase
-      .channel('messages:all', {
+      .channel(`messages:${room.id}`, {
         config: {
           broadcast: { self: true },
         },
@@ -157,6 +163,7 @@ export default function Chat({ user }: ChatProps) {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
+          filter: `room_id=eq.${room.id}`
         },
         async (payload: RealtimePostgresChangesPayload<Message>) => {
           try {
@@ -173,6 +180,7 @@ export default function Chat({ user }: ChatProps) {
                 {
                   id: newRow.id,
                   user_id: newRow.user_id,
+                  room_id: newRow.room_id,
                   content: newRow.content,
                   created_at: newRow.created_at,
                   profiles: profile,
@@ -224,6 +232,7 @@ export default function Chat({ user }: ChatProps) {
       const { error } = await supabase.from('messages').insert({
         content: newMessage.trim(),
         user_id: user.id,
+        room_id: room.id,
       });
 
       if (error) {
@@ -255,11 +264,20 @@ export default function Chat({ user }: ChatProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col">
       <header className="bg-white shadow-md p-4 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">WebChat</h1>
-          <p className="text-sm text-gray-600">
-            Conectado como {currentProfile?.display_name || 'Usuário'}
-          </p>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600"
+            title="Voltar para salas"
+          >
+            <ArrowLeft size={24} />
+          </button>
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">{room.name}</h1>
+            <p className="text-xs text-gray-600">
+              Conectado como {currentProfile?.display_name || 'Usuário'}
+            </p>
+          </div>
         </div>
         <button
           onClick={handleSignOut}
@@ -273,7 +291,7 @@ export default function Chat({ user }: ChatProps) {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.filter((m) => m.created_at >= cutoffIso).length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-400">
-            <p>Nenhuma mensagem ainda. Comece a conversar!</p>
+            <p>Nenhuma mensagem ainda nesta sala. Comece a conversar!</p>
           </div>
         ) : (
           messages
@@ -322,7 +340,7 @@ export default function Chat({ user }: ChatProps) {
             type="text"
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Digite sua mensagem..."
+            placeholder={`Mensagem em ${room.name}...`}
             className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={loading}
           />
