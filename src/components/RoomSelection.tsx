@@ -58,7 +58,7 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
     });
 
     if (insertError) {
-      setError('Erro ao criar sala. Tente novamente.');
+      setError(`Erro ao criar sala: ${insertError.message}`);
     } else {
       setNewRoomName('');
       setIsPrivate(false);
@@ -72,13 +72,15 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
     e.stopPropagation();
     if (!confirm('Tem certeza que deseja deletar esta sala? Todas as mensagens serão perdidas.')) return;
 
+    setError('');
     const { error: deleteError } = await supabase
       .from('rooms')
       .delete()
       .eq('id', roomId);
 
     if (deleteError) {
-      setError('Erro ao deletar sala. Apenas o criador pode deletar.');
+      console.error('Delete error:', deleteError);
+      setError(`Erro ao deletar sala: ${deleteError.message}. Verifique se você é o criador e se a política RLS foi aplicada.`);
     } else {
       loadRooms();
     }
@@ -132,7 +134,7 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg break-words">
             {error}
           </div>
         )}
@@ -141,12 +143,10 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
           {rooms.map((room) => (
             <div
               key={room.id}
-              className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all border border-transparent hover:border-blue-400 overflow-hidden flex flex-col group"
+              onClick={() => handleJoinRoom(room)}
+              className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all border border-transparent hover:border-blue-400 overflow-hidden flex flex-col group cursor-pointer"
             >
-              <button
-                onClick={() => handleJoinRoom(room)}
-                className="flex-1 p-6 text-left w-full h-full"
-              >
+              <div className="flex-1 p-6 text-left w-full h-full">
                 <div className="flex justify-between items-start mb-2">
                   <span className={`p-2 rounded-lg ${room.is_private ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'}`}>
                     {room.is_private ? <Lock size={20} /> : <Unlock size={20} />}
@@ -154,7 +154,7 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
                   {room.created_by === userId && (
                     <button
                       onClick={(e) => handleDeleteRoom(e, room.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors z-10"
                       title="Deletar Sala"
                     >
                       <Trash2 size={20} />
@@ -167,7 +167,7 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
                 <p className="text-sm text-gray-500 mt-1">
                   {room.is_private ? 'Sala Privada' : 'Sala Pública'}
                 </p>
-              </button>
+              </div>
             </div>
           ))}
           {rooms.length === 0 && (
@@ -242,8 +242,8 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
 
       {/* Modal Senha */}
       {joiningRoom && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setJoiningRoom(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-xl font-bold mb-2">Entrar na Sala: {joiningRoom.name}</h3>
             <p className="text-sm text-gray-600 mb-4">Esta sala é privada. Digite a senha para entrar.</p>
             <div className="space-y-4">
