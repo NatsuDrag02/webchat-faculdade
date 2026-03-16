@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Room } from '../lib/supabase';
-import { Plus, Lock, Unlock, LogOut } from 'lucide-react';
+import { Plus, Lock, Unlock, LogOut, Trash2 } from 'lucide-react';
 
 interface RoomSelectionProps {
   userId: string;
@@ -68,6 +68,22 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
     }
   };
 
+  const handleDeleteRoom = async (e: React.MouseEvent, roomId: string) => {
+    e.stopPropagation();
+    if (!confirm('Tem certeza que deseja deletar esta sala? Todas as mensagens serão perdidas.')) return;
+
+    const { error: deleteError } = await supabase
+      .from('rooms')
+      .delete()
+      .eq('id', roomId);
+
+    if (deleteError) {
+      setError('Erro ao deletar sala. Apenas o criador pode deletar.');
+    } else {
+      loadRooms();
+    }
+  };
+
   const handleJoinRoom = (room: Room) => {
     if (room.is_private) {
       setJoiningRoom(room);
@@ -123,23 +139,36 @@ export default function RoomSelection({ userId, onSelectRoom, onSignOut, display
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {rooms.map((room) => (
-            <button
+            <div
               key={room.id}
-              onClick={() => handleJoinRoom(room)}
-              className="bg-white p-6 rounded-xl shadow-md hover:shadow-xl transition-all border border-transparent hover:border-blue-400 text-left group"
+              className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all border border-transparent hover:border-blue-400 overflow-hidden flex flex-col group"
             >
-              <div className="flex justify-between items-start mb-2">
-                <span className={`p-2 rounded-lg ${room.is_private ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'}`}>
-                  {room.is_private ? <Lock size={20} /> : <Unlock size={20} />}
-                </span>
-              </div>
-              <h3 className="text-lg font-bold text-gray-800 group-hover:text-blue-600 transition-colors">
-                {room.name}
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">
-                {room.is_private ? 'Sala Privada' : 'Sala Pública'}
-              </p>
-            </button>
+              <button
+                onClick={() => handleJoinRoom(room)}
+                className="flex-1 p-6 text-left w-full h-full"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className={`p-2 rounded-lg ${room.is_private ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'}`}>
+                    {room.is_private ? <Lock size={20} /> : <Unlock size={20} />}
+                  </span>
+                  {room.created_by === userId && (
+                    <button
+                      onClick={(e) => handleDeleteRoom(e, room.id)}
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Deletar Sala"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  )}
+                </div>
+                <h3 className="text-lg font-bold text-gray-800 group-hover:text-blue-600 transition-colors">
+                  {room.name}
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {room.is_private ? 'Sala Privada' : 'Sala Pública'}
+                </p>
+              </button>
+            </div>
           ))}
           {rooms.length === 0 && (
             <div className="col-span-full text-center py-12 text-gray-400">
